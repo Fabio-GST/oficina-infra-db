@@ -1,0 +1,20 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+terraform.tfvars
+backend.hcl
+.terraform.lock.hcl.bak
+
+# Credenciais / kubeconfig
+*.pem
+kubeconfig*
+.env
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

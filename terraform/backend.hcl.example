@@ -1,0 +1,7 @@
+# Copie para backend.hcl e ajuste o bucket (o mesmo usado pelo repo oficina-infra-k8s).
+# Uso: terraform init -backend-config=backend.hcl
+bucket         = "oficina-terraform-state-<SEU-SUFIXO>"
+key            = "oficina-infra-db/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "oficina-terraform-lock"
+encrypt        = true

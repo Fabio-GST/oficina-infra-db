@@ -1,0 +1,111 @@
+# CD: terraform apply automático. Os bancos de hml e prod ficam em um único
+# state; a branch define apenas o environment do GitHub (homolog → hml,
+# main → prod), que carrega suas próprias regras de aprovação. Os applies são
+# serializados.
+#
+# Pré-requisitos:
+# - repo oficina-infra-k8s já aplicado (VPC e SG dos nós publicados no SSM);
+# - credenciais do Learner Lab atualizadas nos secrets (expiram a cada sessão).
+name: CD
+
+on:
+  push:
+    branches: [homolog, main]
+  workflow_dispatch:
+    inputs:
+      destruir:
+        description: 'Executar terraform destroy (fim da sessão do lab)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-oficina-infra-db
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  TF_IN_AUTOMATION: 'true'
+
+defaults:
+  run:
+    working-directory: terraform
+
+jobs:
+  apply:
+    name: terraform ${{ inputs.destruir && 'destroy' || 'apply' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'hml' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+          terraform_wrapper: false
+
+      - name: Credenciais AWS (Learner Lab)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Verificar sessão do lab
+        run: aws sts get-caller-identity
+
+      - name: Verificar pré-requisitos (rede publicada pelo oficina-infra-k8s)
+        if: ${{ !inputs.destruir }}
+        run: |
+          for p in /oficina/vpc/id /oficina/vpc/subnets-privadas /oficina/eks/sg-nos; do
+            aws ssm get-parameter --name "$p" --query Parameter.Value --output text >/dev/null \
+              || { echo "::error::Parâmetro $p ausente no SSM. Aplique o repo oficina-infra-k8s primeiro."; exit 1; }
+          done
+
+      - name: terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=oficina-infra-db/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+
+      - name: terraform apply
+        if: ${{ !inputs.destruir }}
+        run: |
+          terraform apply -input=false -auto-approve \
+            -var='ambientes=${{ vars.AMBIENTES || '["hml","prod"]' }}'
+
+      # O runner não alcança o RDS (subnets privadas). O smoke test confere, pela
+      # API da AWS, que cada instância está "available" e que o segredo existe.
+      - name: Smoke test
+        if: ${{ !inputs.destruir }}
+        run: |
+          for amb in $(terraform output -json endpoints | jq -r 'keys[]'); do
+            status=$(aws rds describe-db-instances --db-instance-identifier "oficina-$amb" \
+              --query 'DBInstances[0].DBInstanceStatus' --output text)
+            echo "oficina-$amb: $status"
+            [ "$status" = "available" ] || { echo "::error::RDS oficina-$amb não está available"; exit 1; }
+            aws secretsmanager describe-secret --secret-id "oficina/$amb/db" --query Name --output text
+          done
+
+      - name: Resumo
+        if: ${{ !inputs.destruir }}
+        run: |
+          {
+            echo "## Banco de dados aplicado"
+            echo
+            echo '```'
+            terraform output -no-color
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: terraform destroy
+        if: ${{ inputs.destruir }}
+        run: |
+          terraform destroy -input=false -auto-approve \
+            -var='ambientes=${{ vars.AMBIENTES || '["hml","prod"]' }}'
