@@ -1,0 +1,8 @@
+# Copie para terraform.tfvars. Todos têm default; ajuste só o necessário.
+regiao           = "us-east-1"
+ambientes        = ["hml", "prod"] # use ["hml"] em sessões de teste para economizar
+classe_instancia = "db.t3.micro"
+armazenamento_gb = 20
+versao_mysql     = "8.0"
+nome_banco       = "oficina"
+usuario_admin    = "oficina_admin"
