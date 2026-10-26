@@ -16,6 +16,8 @@ relacionamentos e ajustes propostos).
 Não há Dockerfile neste repositório: ele só contém Terraform e documentação. A API e a Lambda
 que consomem o banco têm seus próprios artefatos nos repositórios acima.
 
+🎬 **Vídeo de demonstração da Fase 3** (até 15 min): [assistir](https://drive.google.com/file/d/1RDWC32xFUaCeHpzbTpB_Rg1yz7Fi58Ie/view?usp=sharing) — roteiro e capturas no repositório [oficina-api](https://github.com/Fabio-GST/oficina-api/blob/main/docs/roteiro-video-fase-3.md).
+
 ## Arquitetura deste repositório
 
 ```mermaid
